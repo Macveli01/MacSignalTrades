@@ -14,8 +14,7 @@ This replaces Cloudflare Cron as the scanner host. The Vercel dashboard and exis
 
 In **Edge Functions → Secrets**, add:
 
-- `TWELVE_DATA_API_KEY`: your Twelve Data API key.
-- `SUPABASE_URL`: the project URL from Project Settings → API.
+- `TWELVE_DATA_API_KEY`: your Twelve Data API key (still required).
 - `SUPABASE_SERVICE_ROLE_KEY`: the service-role key from Project Settings → API. Store it only in Supabase secrets; never put it in GitHub or chat.
 - `SCANNER_RUN_SECRET`: a new long random secret. Use the same value in the SQL schedule below.
 - `SCANNER_ENABLED`: set to `false` initially.
@@ -26,11 +25,10 @@ Do not reuse the previously exposed Telegram bot token. This scanner does not ne
 ## 3. Schedule the function
 
 1. Open `supabase/SCANNER_SCHEDULE.sql` from this repository.
-2. Replace `YOUR_PROJECT_REF` with the project reference from your Supabase URL.
-3. Replace `YOUR_LONG_RANDOM_SECRET` with the exact same value saved as the `SCANNER_RUN_SECRET` function secret.
+2. 3. Replace `YOUR_LONG_RANDOM_SECRET` with the exact same value saved as the `SCANNER_RUN_SECRET` function secret.
 4. Run the edited SQL once in **SQL Editor**.
 
-It enables pg_cron and pg_net, stores the function URL and bearer secret in Supabase Vault, and schedules the function every 2 minutes from 06:00 to 17:58 UTC (07:00–18:58 Lagos time).
+The project URL is already filled in. It enables pg_cron and pg_net, stores the function URL and bearer secret in Supabase Vault, and schedules the function every 2 minutes from 06:00 to 17:58 UTC (07:00–18:58 Lagos time).
 
 ## 4. Keep it disabled until verified
 
