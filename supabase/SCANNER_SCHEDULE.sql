@@ -1,7 +1,7 @@
 -- MacSignalTrades: schedule the paper-only scanner.
 -- Run this ONLY after deploying the macsignaltrades-scanner Edge Function
 -- and adding SCANNER_RUN_SECRET to that function's secrets.
--- Replace YOUR_PROJECT_REF and YOUR_LONG_RANDOM_SECRET before running.
+-- Replace reoyfmavtaldilcawwzp and YOUR_LONG_RANDOM_SECRET before running.
 -- Use the SAME random secret in the Edge Function secret setting and below.
 
 create extension if not exists pg_cron;
@@ -9,7 +9,7 @@ create extension if not exists supabase_vault with schema vault;
 create extension if not exists pg_net;
 
 select vault.create_secret(
-  'https://YOUR_PROJECT_REF.supabase.co/functions/v1/macsignaltrades-scanner',
+  'https://reoyfmavtaldilcawwzp.supabase.co/functions/v1/macsignaltrades-scanner',
   'macsignaltrades_function_url'
 );
 
