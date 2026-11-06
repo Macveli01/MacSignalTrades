@@ -5,6 +5,7 @@
 -- Use the SAME random secret in the Edge Function secret setting and below.
 
 create extension if not exists pg_cron;
+create extension if not exists supabase_vault with schema vault;
 create extension if not exists pg_net;
 
 select vault.create_secret(
