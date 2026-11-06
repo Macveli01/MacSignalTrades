@@ -1,0 +1,10 @@
+name = "macsignaltrades-scanner"
+main = "src/index.ts"
+compatibility_date = "2026-11-06"
+workers_dev = true
+
+[triggers]
+crons = ["*/2 6-17 * * *"]
+
+[observability]
+enabled = true
