@@ -1,20 +1,19 @@
--- MacSignalTrades: schedule the paper-only scanner.
--- Run this ONLY after deploying the macsignaltrades-scanner Edge Function
--- and adding SCANNER_RUN_SECRET to that function's secrets.
--- Replace YOUR_LONG_RANDOM_SECRET before running; the project URL is already set.
--- Use the SAME random secret in the Edge Function secret setting and below.
+-- MacSignalTrades: schedule the Vercel-hosted paper scanner from Supabase Cron.
+-- Set SCANNER_RUN_SECRET in Vercel and store the SAME value below in Supabase Vault.
+-- Set SUPABASE_SERVICE_ROLE_KEY and SCANNER_ENABLED=true in Vercel only after testing.
+-- The URL is the stable production deployment alias.
 
 create extension if not exists pg_cron;
 create extension if not exists supabase_vault with schema vault;
 create extension if not exists pg_net;
 
 select vault.create_secret(
-  'https://reoyfmavtaldilcawwzp.supabase.co/functions/v1/macsignaltrades-scanner',
+  'https://macsignaltrades.vercel.app/api/scanner',
   'macsignaltrades_function_url'
 );
 
 select vault.create_secret(
-  'YOUR_LONG_RANDOM_SECRET',
+  'REPLACE_WITH_THE_SAME_LONG_RANDOM_SECRET_USED_IN_VERCEL',
   'macsignaltrades_scanner_secret'
 );
 
@@ -24,18 +23,14 @@ select cron.schedule(
   $$
     select net.http_post(
       url := (
-        select decrypted_secret
-        from vault.decrypted_secrets
-        where name = 'macsignaltrades_function_url'
-        limit 1
+        select decrypted_secret from vault.decrypted_secrets
+        where name = 'macsignaltrades_function_url' limit 1
       ),
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
         'Authorization', 'Bearer ' || (
-          select decrypted_secret
-          from vault.decrypted_secrets
-          where name = 'macsignaltrades_scanner_secret'
-          limit 1
+          select decrypted_secret from vault.decrypted_secrets
+          where name = 'macsignaltrades_scanner_secret' limit 1
         )
       ),
       body := '{}'::jsonb
@@ -43,6 +38,6 @@ select cron.schedule(
   $$
 );
 
--- The cron schedule is UTC: 06:00-17:58 UTC = 07:00-18:58 Lagos time.
--- Keep SCANNER_ENABLED=false until provider access and database writes are tested.
--- To pause later: select cron.unschedule('macsignaltrades-every-2-minutes');
+-- UTC 06:00-17:58 = Lagos 07:00-18:58.
+-- Keep SCANNER_ENABLED=false until the manual POST succeeds and writes are verified.
+-- Pause: select cron.unschedule('macsignaltrades-every-2-minutes');
