@@ -202,7 +202,7 @@ async function scanOne(symbol: string, env: Env, now: number) {
   return { symbol, status: saved === "saved" ? "PAPER_RECORDED" : "DUPLICATE", direction: signal.direction, rr: signal.riskReward };
 }
 
-async function runScheduled(env: Env, now: Date) {
+export async function runScheduled(env: Env, now: Date) {
   if (env.SCANNER_ENABLED !== "true") return { status:"DISABLED" };
   if (!env.TWELVE_DATA_API_KEY || !env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing required secrets");
   const symbols = (env.WATCHLIST || DEFAULT_WATCHLIST.join(",")).split(",").map(x=>x.trim()).filter(Boolean);
