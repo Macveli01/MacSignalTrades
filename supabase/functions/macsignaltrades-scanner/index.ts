@@ -1,5 +1,4 @@
 interface Env {
-  TWELVE_DATA_API_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SCANNER_ENABLED?: string;
   SCANNER_RUN_SECRET?: string;
@@ -23,13 +22,20 @@ function median(values: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 function parseCandles(raw: unknown): Candle[] {
-  if (!raw || typeof raw !== "object" || !Array.isArray((raw as any).values)) throw new Error("Market data response has no values array");
-  const values = (raw as any).values.map((v: any) => ({
-    datetime: String(v.datetime),
-    open: Number(v.open), high: Number(v.high), low: Number(v.low), close: Number(v.close)
-  })).filter((c: Candle) => c.datetime && [c.open,c.high,c.low,c.close].every(finite));
+  if (!raw || typeof raw !== "object" || !Array.isArray((raw as any).bars)) {
+    throw new Error("Biquote response has no bars array");
+  }
+  // Biquote returns newest-first bars and marks the unfinished bar isOpen=true.
+  const values = (raw as any).bars
+    .filter((v: any) => v && v.isOpen !== true)
+    .map((v: any) => ({
+      datetime: String(v.openTime),
+      open: Number(v.open), high: Number(v.high), low: Number(v.low), close: Number(v.close)
+    }))
+    .filter((c: Candle) => c.datetime && Number.isFinite(Date.parse(c.datetime)) &&
+      [c.open,c.high,c.low,c.close].every(finite));
   values.sort((a: Candle, b: Candle) => Date.parse(a.datetime) - Date.parse(b.datetime));
-  if (values.length < 40) throw new Error("Insufficient candle history");
+  if (values.length < 40) throw new Error("Biquote returned fewer than 40 completed candles");
   return values;
 }
 function closedCandles(candles: Candle[], intervalMs: number, now: number): Candle[] {
@@ -138,7 +144,7 @@ function detect(c5: Candle[], c4: Candle[], symbol: string, now: number) {
       };
       if (!REQUIRED.every(k => checks[k])) continue;
       return {
-        source: "twelvedata_cloud_scan", symbol, market: marketFor(symbol), direction: bias,
+        source: "biquote_public_feed", symbol, market: marketFor(symbol), direction: bias,
         timeframe: "5m", candleClosed: true, candleTime: new Date(lastTime).toISOString(),
         entry: round(entry), stopLoss: round(stopLoss), takeProfit: round(takeProfit),
         riskReward: round(rr), checks,
@@ -156,17 +162,19 @@ function marketFor(symbol: string): Market {
   if (symbol.includes("BTC") || symbol.includes("ETH")) return "crypto";
   return "forex";
 }
-async function getCandles(symbol: string, interval: "5min"|"4h", env: Env): Promise<Candle[]> {
-  const url = new URL("https://api.twelvedata.com/time_series");
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("interval", interval);
-  url.searchParams.set("outputsize", "120");
-  url.searchParams.set("timezone", "UTC");
-  url.searchParams.set("apikey", env.TWELVE_DATA_API_KEY);
-  const response = await fetch(url.toString());
-  if (!response.ok) throw new Error("Market data provider HTTP " + response.status);
+async function getCandles(symbol: string, interval: "5min"|"4h", _env: Env): Promise<Candle[]> {
+  const providerSymbol = symbol.replaceAll("/", "");
+  const providerInterval = interval === "5min" ? "5m" : "4h";
+  const url = new URL("https://biquote.io/api/" + encodeURIComponent(providerSymbol) + "/ohlc");
+  url.searchParams.set("interval", providerInterval);
+  url.searchParams.set("limit", "160");
+  const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error("Biquote HTTP " + response.status + ": " + detail.slice(0, 180));
+  }
   const data = await response.json() as any;
-  if (data.status === "error" || data.code) throw new Error(String(data.message || "Market data provider rejected request"));
+  if (data.error || data.message) throw new Error(String(data.message || data.error));
   return parseCandles(data);
 }
 async function saveSignal(signal: any, env: Env): Promise<"saved"|"duplicate"> {
@@ -190,7 +198,7 @@ async function saveSignal(signal: any, env: Env): Promise<"saved"|"duplicate"> {
   return Array.isArray(rows) && rows.length ? "saved" : "duplicate";
 }
 async function scanOne(symbol: string, env: Env, now: number) {
-  // Two API credits per symbol scan (M5 + H4), kept below the free plan's per-minute cap.
+  // Two public Biquote OHLC requests per symbol scan (M5 + H4).
   const [m5Raw,h4Raw] = await Promise.all([getCandles(symbol,"5min",env),getCandles(symbol,"4h",env)]);
   const m5 = closedCandles(m5Raw,5*60_000,now);
   const h4 = closedCandles(h4Raw,4*60*60_000,now);
@@ -203,10 +211,10 @@ async function scanOne(symbol: string, env: Env, now: number) {
 
 async function runScheduled(env: Env, now: Date) {
   if (env.SCANNER_ENABLED !== "true") return { status:"DISABLED" };
-  if (!env.TWELVE_DATA_API_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing required secrets");
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY secret");
   const symbols = (env.WATCHLIST || DEFAULT_WATCHLIST.join(",")).split(",").map(x=>x.trim()).filter(Boolean);
   if (!symbols.length) throw new Error("Watchlist is empty");
-  // Cloudflare cron runs every 2 minutes from 06:00–17:58 UTC (07:00–18:58 Lagos time).
+  // Supabase Cron invokes every 2 minutes from 06:00–17:58 UTC (07:00–18:58 Lagos time).
   // One symbol is scanned per invocation; a six-symbol watchlist cycles every 12 minutes.
   const minuteOfDay = now.getUTCHours()*60 + now.getUTCMinutes();
   const slot = Math.floor((minuteOfDay - 6*60) / 2);
@@ -227,7 +235,6 @@ Deno.serve(async (request: Request) => {
   }
 
   const env: Env = {
-    TWELVE_DATA_API_KEY: Deno.env.get("TWELVE_DATA_API_KEY") || "",
     SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
     SCANNER_ENABLED: Deno.env.get("SCANNER_ENABLED") || "false",
     SCANNER_RUN_SECRET: expectedSecret,
