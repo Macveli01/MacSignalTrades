@@ -3,6 +3,7 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SCANNER_ENABLED?: string;
+  SCANNER_RUN_SECRET?: string;
   WATCHLIST?: string;
 }
 
@@ -215,8 +216,11 @@ async function runScheduled(env: Env, now: Date) {
   return await scanOne(symbol,env,now.getTime());
 }
 
+type ScheduledEventLike = { scheduledTime: number; cron: string };
+type ExecutionContextLike = { waitUntil(promise: Promise<unknown>): void };
+
 export default {
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  async scheduled(_event: ScheduledEventLike, env: Env, ctx: ExecutionContextLike) {
     ctx.waitUntil(runScheduled(env,new Date()).catch(err => console.error("scanner_failed", String(err))));
   },
   async fetch(request: Request, env: Env) {
