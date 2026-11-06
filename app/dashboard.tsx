@@ -8,7 +8,8 @@ const assets = [
   ["BTCUSD","Bitcoin / US Dollar","CRYPTO","COINBASE:BTCUSD","+1.24%"],
   ["ETHUSD","Ethereum / US Dollar","CRYPTO","COINBASE:ETHUSD","-0.56%"]
 ] as const;
-type Draft={id:number;symbol:string;side:string;entry:string;sl:string;tp:string;summary:string;details:string};\ntype StoredSignal={id:number;symbol:string;direction:string;entry:number;stop_loss:number;take_profit:number;risk_reward:number;status:string;candle_time:string;market:string;timeframe:string;payload?:{setup?:{zoneType?:string}}};
+type Draft={id:number;symbol:string;side:string;entry:string;sl:string;tp:string;summary:string;details:string};
+type StoredSignal={id:number;symbol:string;direction:string;entry:number;stop_loss:number;take_profit:number;risk_reward:number;status:string;candle_time:string;market:string;timeframe:string;payload?:{setup?:{zoneType?:string}}};
 export default function Dashboard(){
  const [tab,setTab]=useState("Overview"),[symbol,setSymbol]=useState("XAUUSD"),[side,setSide]=useState("BUY");
  const [entry,setEntry]=useState(""),[sl,setSl]=useState(""),[tp,setTp]=useState(""),[summary,setSummary]=useState(""),[details,setDetails]=useState("4H bias: pending\nLiquidity sweep: pending\n5M displacement: pending\nMSS close: pending\nEntry zone: pending\nInvalidation: pending");
