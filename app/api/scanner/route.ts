@@ -68,6 +68,30 @@ function findSetup(m5:Candle[],h4:Candle[],symbol:string,now:number) {
   }
   return null;
 }
+async function autoPublish(signal:any) {
+  const token=process.env.TELEGRAM_BOT_TOKEN, chatId=process.env.TELEGRAM_CHAT_ID;
+  if(!token||!chatId) throw new Error("Auto-publish is enabled but Telegram credentials are missing");
+  const message=[
+    "MACSIGNALTRADES | "+signal.symbol,
+    signal.direction+" | Entry "+signal.entry,
+    "SL "+signal.stopLoss+" | TP "+signal.takeProfit+" | R:R "+signal.riskReward+"R",
+    "",
+    "ICT / SMC PAPER SIGNAL",
+    signal.setup?.zoneType||"Validated setup",
+    "H4 bias: "+signal.setup?.h4Bias,
+    "Time: "+signal.candleTime,
+    "",
+    "PAPER SIGNAL ONLY · No trades are executed · Not financial advice"
+  ].join("\\n");
+  const response=await fetch("https://api.telegram.org/bot"+token+"/sendMessage",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({chat_id:chatId,text:message,disable_web_page_preview:true}),
+    cache:"no-store",signal:AbortSignal.timeout(15000)
+  });
+  const result=await response.json();
+  if(!response.ok||!result?.ok) throw new Error("Telegram rejected automatic signal publication");
+  return result.result?.message_id;
+}
 async function save(signal:any,key:string) {
   const input=[signal.symbol,signal.direction,signal.candleTime,signal.entry,signal.stopLoss,signal.takeProfit].join("|");
   const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(input));
@@ -98,7 +122,15 @@ export async function POST(request:Request) {
     const signal=findSetup(m5,h4,symbol,now.getTime());
     if(!signal) return Response.json({ok:true,status:"NO_SETUP",symbol});
     const status=await save(signal,key);
-    return Response.json({ok:true,status,symbol,direction:signal.direction,riskReward:signal.riskReward});
+    let telegram="NOT_SENT";
+    if(status==="PAPER_RECORDED" && process.env.AUTO_PUBLISH==="true") {
+      try { await autoPublish(signal); telegram="SENT_TO_CHANNEL"; }
+      catch(e) {
+        console.error("macsignaltrades_auto_publish_error",e);
+        telegram="FAILED";
+      }
+    }
+    return Response.json({ok:true,status,telegram,symbol,direction:signal.direction,riskReward:signal.riskReward});
   } catch(e) {
     console.error("macsignaltrades_scanner_error",e);
     return Response.json({ok:false,status:"ERROR",error:e instanceof Error?e.message:"Scanner failed"},{status:503});
