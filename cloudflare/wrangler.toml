@@ -8,8 +8,6 @@ crons = ["*/2 6-17 * * *"]
 
 [observability]
 enabled = true
-[observability]
-enabled = true
 head_sampling_rate = 1
 redact_query_string = false
 
