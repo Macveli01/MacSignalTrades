@@ -1,48 +1,33 @@
-# Deploy MacSignalTrades scanner on Supabase
+# MacSignalTrades scanner — Vercel runtime, Supabase database
 
-This replaces Cloudflare Cron as the scanner host. The Vercel dashboard and existing Supabase database stay in place. The scanner remains paper-only and does not publish Telegram messages or place trades.
+The scanner runs as a Node.js API route on the existing Vercel project. Supabase remains the database and scheduler. This is paper-only: no orders, no Telegram publishing.
 
-## 1. Create the Edge Function
+## What is already in the repository
+- Scanner endpoint: `app/api/scanner/route.ts`
+- Scheduler SQL: `supabase/SCANNER_SCHEDULE.sql`
+- Dashboard and market feed remain unchanged.
 
-1. Open the Supabase project dashboard.
-2. Go to **Edge Functions** and create a function named `macsignaltrades-scanner`.
-3. Open the GitHub file `supabase/functions/macsignaltrades-scanner/index.ts` and copy its complete contents into the Supabase function editor.
-4. Deploy the function.
-5. In the function's settings, turn **Verify JWT** off. This function checks its own `SCANNER_RUN_SECRET` bearer token instead. Do not make the function public without that secret check.
+## Required Vercel environment variables
+In Vercel → Project Settings → Environment Variables, add these for **Production**:
+- `SUPABASE_SERVICE_ROLE_KEY`: the service-role key from Supabase Project Settings → API. Keep it encrypted in Vercel; never put it in GitHub or chat.
+- `SCANNER_RUN_SECRET`: a long random secret. The same value must be stored in Supabase Vault by the scheduler SQL.
+- `SCANNER_ENABLED`: keep `false` until the manual test succeeds. Change to `true` only after validation.
+- `WATCHLIST` (optional): `EUR/USD,GBP/USD,USD/JPY,XAU/USD,BTC/USD,ETH/USD`.
 
-## 2. Add function secrets
+After adding or changing environment variables, redeploy the Vercel project so the production function receives them.
 
-In **Edge Functions → Secrets**, add:
+## Supabase schedule
+1. In Supabase SQL Editor, open `supabase/SCANNER_SCHEDULE.sql` from this repository.
+2. Replace `REPLACE_WITH_THE_SAME_LONG_RANDOM_SECRET_USED_IN_VERCEL` with the exact `SCANNER_RUN_SECRET` value saved in Vercel.
+3. Run the SQL once. It stores the Vercel endpoint and bearer secret in Supabase Vault and schedules a request every two minutes from 06:00–17:58 UTC (07:00–18:58 Lagos time).
 
-- `SUPABASE_SERVICE_ROLE_KEY`: the service-role key from Project Settings → API. Store it only in Supabase secrets; never put it in GitHub or chat.
-- `SCANNER_RUN_SECRET`: a new long random secret. Use the same value in the SQL schedule below.
-- `SCANNER_ENABLED`: set to `false` initially.
-- `WATCHLIST`: optional; default is `EUR/USD,GBP/USD,USD/JPY,XAU/USD,BTC/USD,ETH/USD`.
+Do not run the SQL repeatedly without first checking existing Vault secrets and cron jobs; the secret names and cron job name are intended to be unique.
 
-Do not reuse the previously exposed Telegram bot token. This scanner does not need a Telegram token.
+## Safe test
+- Confirm `https://macsignaltrades.vercel.app/api/scanner` returns a service status.
+- Keep `SCANNER_ENABLED=false` until Vercel has both secrets.
+- For a manual POST test, use the same bearer secret. A response of `NO_SETUP` is valid when no qualifying setup exists. A response of `PAPER_RECORDED` means a paper signal was written; `DUPLICATE` means it was already recorded.
+- Check `/api/signals` for database connectivity and confirm the row exists in `public.signal_journal`.
 
-## 3. Schedule the function
-
-1. Open `supabase/SCANNER_SCHEDULE.sql` from this repository.
-2. 3. Replace `YOUR_LONG_RANDOM_SECRET` with the exact same value saved as the `SCANNER_RUN_SECRET` function secret.
-4. Run the edited SQL once in **SQL Editor**.
-
-The project URL is already filled in. It enables pg_cron and pg_net, stores the function URL and bearer secret in Supabase Vault, and schedules the function every 2 minutes from 06:00 to 17:58 UTC (07:00–18:58 Lagos time). Market candles come from Biquote's public no-key OHLC API; no Twelve Data key is needed.
-
-## 4. Keep it disabled until verified
-
-Leave `SCANNER_ENABLED=false` while checking:
-- The Edge Function deploys successfully.
-- Function logs show no missing-secret or runtime errors.
-- A manual test during the scan window returns a valid status.
-- A test signal can be written to `public.signal_journal`.
-
-Only after those checks should `SCANNER_ENABLED` be changed to `true`. This is a paper scanner, not an Exness MT5 feed or a proven profitable strategy. Biquote's public MT5 feed is not guaranteed to match your Exness account's broker feed or spreads. No automatic trading or Telegram publishing is enabled.
-
-## Pause the schedule
-
-Run:
-
-```sql
-select cron.unschedule('macsignaltrades-every-2-minutes');
-```
+## Safety notes
+The scanner uses Biquote public OHLC candles, which may differ from Exness prices/spreads. Signals are rule-based paper observations, not guaranteed profitable advice. No MT5 order execution or Telegram automation is enabled.
