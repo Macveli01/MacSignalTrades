@@ -1,6 +1,5 @@
 interface Env {
   TWELVE_DATA_API_KEY: string;
-  SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SCANNER_ENABLED?: string;
   SCANNER_RUN_SECRET?: string;
@@ -180,7 +179,7 @@ async function saveSignal(signal: any, env: Env): Promise<"saved"|"duplicate"> {
     stop_loss: signal.stopLoss, take_profit: signal.takeProfit, risk_reward: signal.riskReward,
     status: "PAPER", payload: signal
   };
-  const response = await fetch(env.SUPABASE_URL.replace(/\/$/,"") + "/rest/v1/signal_journal", {
+  const response = await fetch("https://reoyfmavtaldilcawwzp.supabase.co" + "/rest/v1/signal_journal", {
     method: "POST",
     headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: "Bearer " + env.SUPABASE_SERVICE_ROLE_KEY,
       "Content-Type":"application/json", Prefer:"resolution=ignore-duplicates,return=representation" },
@@ -204,7 +203,7 @@ async function scanOne(symbol: string, env: Env, now: number) {
 
 async function runScheduled(env: Env, now: Date) {
   if (env.SCANNER_ENABLED !== "true") return { status:"DISABLED" };
-  if (!env.TWELVE_DATA_API_KEY || !env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing required secrets");
+  if (!env.TWELVE_DATA_API_KEY || !env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing required secrets");
   const symbols = (env.WATCHLIST || DEFAULT_WATCHLIST.join(",")).split(",").map(x=>x.trim()).filter(Boolean);
   if (!symbols.length) throw new Error("Watchlist is empty");
   // Cloudflare cron runs every 2 minutes from 06:00–17:58 UTC (07:00–18:58 Lagos time).
@@ -229,7 +228,6 @@ Deno.serve(async (request: Request) => {
 
   const env: Env = {
     TWELVE_DATA_API_KEY: Deno.env.get("TWELVE_DATA_API_KEY") || "",
-    SUPABASE_URL: Deno.env.get("SUPABASE_URL") || "",
     SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
     SCANNER_ENABLED: Deno.env.get("SCANNER_ENABLED") || "false",
     SCANNER_RUN_SECRET: expectedSecret,
