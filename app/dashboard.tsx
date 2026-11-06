@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 const assets = [
-  ["EURUSD","Euro / US Dollar","FOREX","FX:EURUSD","+0.18%"],
-  ["GBPUSD","British Pound / US Dollar","FOREX","FX:GBPUSD","+0.31%"],
-  ["USDJPY","US Dollar / Yen","FOREX","FX:USDJPY","-0.12%"],
-  ["XAUUSD","Gold / US Dollar","GOLD","OANDA:XAUUSD","+0.42%"],
-  ["BTCUSD","Bitcoin / US Dollar","CRYPTO","COINBASE:BTCUSD","+1.24%"],
-  ["ETHUSD","Ethereum / US Dollar","CRYPTO","COINBASE:ETHUSD","-0.56%"]
+  ["EURUSD","Euro / US Dollar","FOREX","FX:EURUSD"],
+  ["GBPUSD","British Pound / US Dollar","FOREX","FX:GBPUSD"],
+  ["USDJPY","US Dollar / Yen","FOREX","FX:USDJPY"],
+  ["XAUUSD","Gold / US Dollar","GOLD","OANDA:XAUUSD"],
+  ["BTCUSD","Bitcoin / US Dollar","CRYPTO","COINBASE:BTCUSD"],
+  ["ETHUSD","Ethereum / US Dollar","CRYPTO","COINBASE:ETHUSD"]
 ] as const;
 type Draft={id:number;symbol:string;side:string;entry:string;sl:string;tp:string;summary:string;details:string};
 type StoredSignal={id:number;symbol:string;direction:string;entry:number;stop_loss:number;take_profit:number;risk_reward:number;status:string;candle_time:string;market:string;timeframe:string;payload?:{setup?:{zoneType?:string}}};
@@ -15,6 +15,7 @@ export default function Dashboard(){
  const [entry,setEntry]=useState(""),[sl,setSl]=useState(""),[tp,setTp]=useState(""),[summary,setSummary]=useState(""),[details,setDetails]=useState("4H bias: pending\nLiquidity sweep: pending\n5M displacement: pending\nMSS close: pending\nEntry zone: pending\nInvalidation: pending");
  const [drafts,setDrafts]=useState<Draft[]>([]),[copied,setCopied]=useState(false);
  const [serverSignals,setServerSignals]=useState<StoredSignal[]>([]),[journalConnected,setJournalConnected]=useState(false);
+ const [quotes,setQuotes]=useState<Record<string,{mid?:number;timestamp?:string;marketState?:string;stale?:boolean}>>({}),[quotesUpdated,setQuotesUpdated]=useState("");
  useEffect(()=>{
   let active=true;
   const load=async()=>{
@@ -28,16 +29,29 @@ export default function Dashboard(){
   const timer=window.setInterval(()=>void load(),60000);
   return ()=>{active=false;window.clearInterval(timer);};
  },[]);
+ useEffect(()=>{
+  let active=true;
+  const loadQuotes=async()=>{
+   try{
+    const response=await fetch("/api/market",{cache:"no-store"});
+    const data=await response.json();
+    if(active&&response.ok){setQuotes(data.quotes||{});setQuotesUpdated(data.updatedAt||"");}
+   }catch{}
+  };
+  void loadQuotes();
+  const timer=window.setInterval(()=>void loadQuotes(),30000);
+  return ()=>{active=false;window.clearInterval(timer);};
+ },[]);
  const asset=assets.find(a=>a[0]===symbol)||assets[3];
  const rr=useMemo(()=>{let e=+entry,s=+sl,t=+tp;return e>0&&s>0&&t>0&&e!==s?(Math.abs(t-e)/Math.abs(e-s)).toFixed(2):"—"},[entry,sl,tp]);
  const msg=[`MACSIGNALTRADES | ${symbol}`,`${side} | Entry ${entry||"—"}`,`SL ${sl||"—"} | TP ${tp||"—"} | R:R ${rr}R`,"","SETUP SUMMARY",summary||"Add summary","", "ICT / SMC DETAILS",details,"","PAPER SIGNAL ONLY · Not financial advice"].join("\n");
  async function copy(){try{await navigator.clipboard.writeText(msg);setCopied(true)}catch{}}
  function save(){if(!entry||!sl||!tp||!summary.trim())return;setDrafts(d=>[{id:Date.now(),symbol,side,entry,sl,tp,summary,details},...d]);setTab("Signals")}
  const tabs=["Overview","Markets","Signals","Signal Builder","Journal","Analytics","Settings"];
- return <div className="terminal"><aside className="side"><div className="logo"><b>M</b><span>MACSIGNAL<small>TRADES TERMINAL</small></span></div><small className="cap">WORKSPACE</small>{tabs.map((t,i)=><button className={tab===t?"nav on":"nav"} onClick={()=>setTab(t)} key={t}><i>{["◫","⌁","◈","＋","▤","▥","⚙"][i]}</i>{t}</button>)}<div className="sidebottom"><span>● PAPER ENVIRONMENT ACTIVE</span><small>EXNESS DEMO · MT5 FEED PENDING</small><a href="https://t.me/macsignaltrades" target="_blank">Telegram channel ↗</a></div></aside>
+ return <div className="terminal"><aside className="side"><div className="logo"><b>M</b><span>MACSIGNAL<small>TRADES TERMINAL</small></span></div><small className="cap">WORKSPACE</small>{tabs.map((t,i)=><button className={tab===t?"nav on":"nav"} onClick={()=>setTab(t)} key={t}><i>{["◫","⌁","◈","＋","▤","▥","⚙"][i]}</i>{t}</button>)}<div className="sidebottom"><span>● PAPER ENVIRONMENT ACTIVE</span><small>EXNESS DEMO · PUBLIC FEED</small><a href="https://t.me/macsignaltrades" target="_blank">Telegram channel ↗</a></div></aside>
  <main><header><div><small>WORKSPACE / {tab.toUpperCase()}</small><h1>{tab==="Overview"?"Market overview":tab}</h1></div><span className="live">{journalConnected?"● PAPER JOURNAL CONNECTED":"● JOURNAL NOT CONNECTED"}</span></header>
  <div className="stats"><article><small>WATCHLIST</small><b>06 <em>symbols</em></b><span>Forex · Gold · Crypto</span></article><article><small>PAPER SIGNALS</small><b>{(drafts.length+serverSignals.length).toString().padStart(2,"0")}</b><span>Manual drafts</span></article><article><small>VALIDATION</small><b className="green">STRICT ICT / SMC</b><span>Closed candle · 1.5R min</span></article><article><small>PUBLISHING</small><b>MANUAL</b><span>No auto-posting or execution</span></article></div>
- {(tab==="Overview"||tab==="Markets")&&<div className="grid"><section className="panel watch"><div className="heading"><div><small>MARKET WATCH</small><h2>Tracked instruments</h2></div><label className="tag">EXNESS DEMO</label></div>{assets.map(a=><button key={a[0]} onClick={()=>setSymbol(a[0])} className={symbol===a[0]?"asset picked":"asset"}><span className="coin">{a[0][0]}</span><span className="assetname"><b>{a[0]}</b><small>{a[1]}</small></span><small>{a[2]}</small><strong className={a[4][0]==="-"?"red":"green"}>{a[4]}</strong></button>)}<p className="hint">Watchlist changes shown here are illustrative placeholders, not live broker quotes. Connect MT5 before relying on prices.</p></section>
+ {(tab==="Overview"||tab==="Markets")&&<div className="grid"><section className="panel watch"><div className="heading"><div><small>MARKET WATCH</small><h2>Tracked instruments</h2></div><label className="tag">EXNESS DEMO</label></div>{assets.map(a=>{const q=quotes[a[0]];return <button key={a[0]} onClick={()=>setSymbol(a[0])} className={symbol===a[0]?"asset picked":"asset"}><span className="coin">{a[0][0]}</span><span className="assetname"><b>{a[0]}</b><small>{a[1]}</small></span><small>{a[2]}</small><strong>{typeof q?.mid==="number"?q.mid.toFixed(a[0].includes("JPY")?3:a[0].includes("BTC")||a[0].includes("ETH")?2: a[0].includes("XAU")?2:5):"—"}</strong></button>})}<p className="hint">{quotesUpdated?"Public Biquote feed · refreshed "+new Date(quotesUpdated).toLocaleTimeString():"Connecting to public market feed…"} · Feed prices may differ from Exness.</p></section>
  <section className="panel chart"><div className="heading"><div><small>PRICE ACTION · TRADINGVIEW</small><h2>{symbol} <span>{asset[1]}</span></h2></div><div className="frames">5m　15m　1H　4H　D</div></div><iframe title="TradingView chart" src={`https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(asset[3])}&interval=5&hidesidetoolbar=0&symboledit=1&toolbarbg=%230e1724&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&hideideas=1&locale=en`} /><div className="chartnote">TradingView chart. Verified MT5 entry / stop / target overlays will be added after feed integration; no levels are fabricated here.</div></section>
  <section className="panel sentiment"><div className="heading"><div><small>MARKET SENTIMENT</small><h2>Fear &amp; Greed Index</h2></div><label className="tag">CRYPTO</label></div><div className="sentrow"><div className="ring"><b>--</b><small>NO DATA</small></div><div><b>Sentiment feed not connected</b><p>Live index and historical trend will display when a reliable source is configured.</p></div></div><div className="scale"><span>EXTREME FEAR</span><span>NEUTRAL</span><span>EXTREME GREED</span></div></section>
  <section className="panel validation"><div className="heading"><div><small>SETUP WORKFLOW</small><h2>ICT / SMC review gates</h2></div><label className="tag">MANUAL REVIEW</label></div>{["4H directional bias","BSL / SSL liquidity sweep","5M displacement","MSS confirmed by candle close","Unmitigated FVG / OB / breaker","Structural stop + external target","Minimum 1.5R risk / reward"].map((x,i)=><div className="gate" key={x}><span>{String(i+1).padStart(2,"0")}</span><b>{x}</b><small>NOT VERIFIED</small></div>)}<p className="hint">Review checklist only. No setup is marked valid without real candle evidence.</p></section></div>}
