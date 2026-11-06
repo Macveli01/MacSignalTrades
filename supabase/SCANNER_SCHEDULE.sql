@@ -1,7 +1,7 @@
 -- MacSignalTrades: schedule the paper-only scanner.
 -- Run this ONLY after deploying the macsignaltrades-scanner Edge Function
 -- and adding SCANNER_RUN_SECRET to that function's secrets.
--- Replace reoyfmavtaldilcawwzp and YOUR_LONG_RANDOM_SECRET before running.
+-- Replace YOUR_LONG_RANDOM_SECRET before running; the project URL is already set.
 -- Use the SAME random secret in the Edge Function secret setting and below.
 
 create extension if not exists pg_cron;
