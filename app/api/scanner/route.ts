@@ -47,7 +47,7 @@ function structure(c:Candle[]) {
   return {hi,lo,h0,h1,l0,l1,trend,lastHigh:c[hi[hi.length-1]].high,lastLow:c[lo[lo.length-1]].low};
 }
 function findFvg(c:Candle[], direction:"BUY"|"SELL") {
-  for(let i=c.length-2;i>=2;i--){
+  for(let i=c.length-1;i>=2;i--){
     const a=c[i-2],b=c[i];
     if(direction==="BUY"&&b.low>a.high) return {low:a.high,high:b.low,index:i};
     if(direction==="SELL"&&b.high<a.low) return {low:b.high,high:a.low,index:i};
