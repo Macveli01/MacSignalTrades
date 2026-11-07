@@ -211,7 +211,8 @@ async function interpretChart(signal:any,h4:Candle[],h1:Candle[],m15:Candle[],m5
     "Check directional H4 context, H1 structure/BOS and nearby supply/demand or OB/FVG context, M15 pullback/retest and candle confirmation, and M5 sweep/displacement/market-structure shift.",
     "This is only an advisory cross-check. Never suggest executing a trade. Return ONLY one JSON object with keys verdict (CONFIRMED, REJECTED, UNCERTAIN), direction (BUY, SELL, NONE), confidence (integer 0-100), reason (short string), and observations (short string).",
     "Candidate: "+JSON.stringify({symbol:signal.symbol,direction:signal.direction,entry:signal.entry,stopLoss:signal.stopLoss,takeProfit:signal.takeProfit,riskReward:signal.riskReward,setup:signal.setup}),
-    "Approximate H1 volume profile (POC/value area; FX volume may be tick volume): "+JSON.stringify(signal.setup?.volumeProfile||null),\n    "Recent completed OHLC context (chronological): "+JSON.stringify({H4:compact(h4),H1:compact(h1),M15:compact(m15),M5:compact(m5)})
+    "Approximate H1 volume profile (POC/value area; FX volume may be tick volume): "+JSON.stringify(signal.setup?.volumeProfile||null),
+    "Recent completed OHLC context (chronological): "+JSON.stringify({H4:compact(h4),H1:compact(h1),M15:compact(m15),M5:compact(m5)})
   ].join("\n\n");
   const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+apiKey,"Content-Type":"application/json","HTTP-Referer":"https://macsignaltrades.vercel.app","X-Title":"MacSignalTrades"},body:JSON.stringify({model:"openrouter/free",messages:[{role:"user",content:[{type:"text",text:prompt},{type:"image_url",image_url:{url:i4}},{type:"image_url",image_url:{url:i1}},{type:"image_url",image_url:{url:i15}},{type:"image_url",image_url:{url:i5}}]}],temperature:0.1,max_tokens:500}),cache:"no-store",signal:AbortSignal.timeout(30000)});
   const body=await r.json();
