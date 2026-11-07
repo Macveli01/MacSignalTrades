@@ -144,6 +144,55 @@ function findSetup(h4:Candle[],h1:Candle[],m15:Candle[],m5:Candle[],symbol:strin
     setup:{h4Bias:direction,h4KeyLevels:{swingHigh:round(h4KeyLevels.swingHigh),swingLow:round(h4KeyLevels.swingLow),equilibrium:round(equilibrium)},h1Structure:s1.trend,h1Bos:true,h1Choch:false,orderBlock:ob?{low:round(ob.low),high:round(ob.high)}:null,h1Fvg:fvg?{low:round(fvg.low),high:round(fvg.high)}:null,m15Retest:true,m15CandlePattern:"directional_body_close_through_previous_candle",m5SweepCandleTime:sweep.datetime,m5DisplacementCandleTime:m5[impulseIndex].datetime,zoneType:"M5_FVG",zoneLow:round(microFvg.low),zoneHigh:round(microFvg.high),equilibrium:round(equilibrium)}
   };
 }
+
+async function chartPng(bars:Candle[], timeframe:TF):Promise<string> {
+  const data=bars.slice(-48);
+  const labels=data.map((x,i)=>String(i+1));
+  const colors=data.map(x=>x.close>=x.open?"#16a34a":"#dc2626");
+  const chart={
+    type:"bar",
+    data:{labels,datasets:[
+      {label:"Wick",data:data.map(x=>[x.low,x.high]),backgroundColor:colors,barThickness:2,categoryPercentage:0.9,barPercentage:0.9},
+      {label:"Candle",data:data.map(x=>[Math.min(x.open,x.close),Math.max(x.open,x.close)]),backgroundColor:colors,borderColor:colors,borderWidth:1,barThickness:8,categoryPercentage:0.9,barPercentage:0.9}
+    ]},
+    options:{plugins:{legend:{display:false},title:{display:true,text:timeframe+" OHLC candles"}},animation:false,scales:{x:{type:"category",ticks:{display:false},grid:{display:false}},y:{type:"linear",position:"right",grid:{color:"#e5e7eb"}}}}
+  };
+  const r=await fetch("https://quickchart.io/chart",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chart,width:1000,height:560,format:"png",backgroundColor:"white",devicePixelRatio:1}),cache:"no-store",signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error("Chart rendering failed for "+timeframe+" (HTTP "+r.status+")");
+  const bytes=new Uint8Array(await r.arrayBuffer());
+  if(bytes.length<1000||bytes.length>2_000_000)throw new Error("Invalid rendered chart image for "+timeframe);
+  let binary="";
+  for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+0x8000,bytes.length)));
+  return "data:image/png;base64,"+btoa(binary);
+}
+async function interpretChart(signal:any,h4:Candle[],h1:Candle[],m15:Candle[],m5:Candle[]) {
+  const apiKey=process.env.OPENROUTER_API_KEY;
+  if(!apiKey)return {status:"NOT_CONFIGURED"};
+  const [i4,i1,i15,i5]=await Promise.all([chartPng(h4,"4h"),chartPng(h1,"1h"),chartPng(m15,"15m"),chartPng(m5,"5m")]);
+  const compact=(bars:Candle[])=>bars.slice(-24).map(x=>({o:x.open,h:x.high,l:x.low,c:x.close,t:x.datetime}));
+  const prompt=[
+    "You are an independent chart-review assistant for a PAPER-ONLY multi-timeframe forex/crypto scanner.",
+    "Review the four attached candlestick charts in order: H4, H1, M15, M5. Compare the chart structure with the supplied candidate.",
+    "Do not invent price levels. If the charts are unclear, conflicting, or the setup is not visibly supported, return UNCERTAIN or REJECTED.",
+    "Check directional H4 context, H1 structure/BOS and nearby supply/demand or OB/FVG context, M15 pullback/retest and candle confirmation, and M5 sweep/displacement/market-structure shift.",
+    "This is only an advisory cross-check. Never suggest executing a trade. Return ONLY one JSON object with keys verdict (CONFIRMED, REJECTED, UNCERTAIN), direction (BUY, SELL, NONE), confidence (integer 0-100), reason (short string), and observations (short string).",
+    "Candidate: "+JSON.stringify({symbol:signal.symbol,direction:signal.direction,entry:signal.entry,stopLoss:signal.stopLoss,takeProfit:signal.takeProfit,riskReward:signal.riskReward,setup:signal.setup}),
+    "Recent completed OHLC context (chronological): "+JSON.stringify({H4:compact(h4),H1:compact(h1),M15:compact(m15),M5:compact(m5)})
+  ].join("\n\n");
+  const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+apiKey,"Content-Type":"application/json","HTTP-Referer":"https://macsignaltrades.vercel.app","X-Title":"MacSignalTrades"},body:JSON.stringify({model:"openrouter/free",messages:[{role:"user",content:[{type:"text",text:prompt},{type:"image_url",image_url:{url:i4}},{type:"image_url",image_url:{url:i1}},{type:"image_url",image_url:{url:i15}},{type:"image_url",image_url:{url:i5}}]}],temperature:0.1,max_tokens:500}),cache:"no-store",signal:AbortSignal.timeout(30000)});
+  const body=await r.json();
+  if(!r.ok)throw new Error("OpenRouter vision request failed (HTTP "+r.status+")");
+  const raw=body?.choices?.[0]?.message?.content;
+  const content=typeof raw==="string"?raw:Array.isArray(raw)?raw.map((x:any)=>x.text||"").join("\n"):"";
+  const start=content.indexOf("{"),end=content.lastIndexOf("}");
+  if(start<0||end<=start)throw new Error("OpenRouter returned no valid JSON review");
+  const parsed=JSON.parse(content.slice(start,end+1));
+  const verdict=["CONFIRMED","REJECTED","UNCERTAIN"].includes(parsed.verdict)?parsed.verdict:"UNCERTAIN";
+  const direction=["BUY","SELL","NONE"].includes(parsed.direction)?parsed.direction:"NONE";
+  const confidence=Number.isFinite(Number(parsed.confidence))?Math.max(0,Math.min(100,Number(parsed.confidence))):0;
+  return {status:verdict==="CONFIRMED"&&direction===signal.direction&&confidence>=65?"CONFIRMED":"NOT_CONFIRMED",verdict,direction,confidence,reason:String(parsed.reason||"No explanation supplied").slice(0,500),observations:String(parsed.observations||"").slice(0,500),model:body?.model||"openrouter/free"};
+}
+
 async function autoPublish(signal:any) {
   const token=process.env.TELEGRAM_BOT_TOKEN,chatId=process.env.TELEGRAM_CHAT_ID;
   if(!token||!chatId) throw new Error("Telegram credentials are missing");
@@ -179,6 +228,11 @@ export async function POST(request:Request) {
     if([h4,h1,m15,m5].some(x=>x.length<40))throw new Error("Insufficient completed candles for all four timeframes");
     const signal=findSetup(h4,h1,m15,m5,symbol,now);
     if(!signal)return Response.json({ok:true,status:"NO_SETUP",symbol,timeframes:["4h","1h","15m","5m"]});
+    if(process.env.OPENROUTER_API_KEY){
+      const review=await interpretChart(signal,h4,h1,m15,m5);
+      signal.chartReview=review;
+      if(review.status!=="CONFIRMED")return Response.json({ok:true,status:"AI_REVIEW_NOT_CONFIRMED",symbol,direction:signal.direction,chartReview:review,timeframes:["4h","1h","15m","5m"]});
+    }
     const status=await save(signal,key);
     let telegram="NOT_SENT";
     if(status==="PAPER_RECORDED"&&process.env.AUTO_PUBLISH==="true"){
