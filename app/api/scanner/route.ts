@@ -226,7 +226,7 @@ export async function POST(request:Request) {
     const complete=(bars:Candle[],tf:TF)=>bars.filter(x=>Date.parse(x.datetime)+intervals[tf]<=now);
     const h4=complete(h4raw,"4h"),h1=complete(h1raw,"1h"),m15=complete(m15raw,"15m"),m5=complete(m5raw,"5m");
     if([h4,h1,m15,m5].some(x=>x.length<40))throw new Error("Insufficient completed candles for all four timeframes");
-    const signal=findSetup(h4,h1,m15,m5,symbol,now);
+    const signal:any=findSetup(h4,h1,m15,m5,symbol,now);
     if(!signal)return Response.json({ok:true,status:"NO_SETUP",symbol,timeframes:["4h","1h","15m","5m"]});
     if(process.env.OPENROUTER_API_KEY){
       const review=await interpretChart(signal,h4,h1,m15,m5);
