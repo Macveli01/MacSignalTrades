@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     const bars = data.bars.filter((x:any)=>x && x.isOpen!==true).map((x:any)=>({
       time:String(x.openTime),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),
       volume:Number(x.volume ?? x.tickVolume ?? x.vol ?? x.tick_volume) || null
-    })).filter((x:any)=>Number.isFinite(Date.parse(x.time))&&[x.open,x.high,x.low,x.close].every(Number.isFinite)).slice(-100);
+    })).filter((x:any)=>Number.isFinite(Date.parse(x.time))&&[x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a:any,b:any)=>Date.parse(a.time)-Date.parse(b.time)).slice(-100);
     if (!bars.length) throw new Error("No completed candles available");
     return NextResponse.json({ok:true,symbol,interval,bars,source:"Biquote public OHLC feed",updatedAt:new Date().toISOString()},{headers:{"Cache-Control":"no-store, max-age=0"}});
   } catch (error) {
