@@ -106,7 +106,8 @@ function inZone(price:number,z:{low:number;high:number}, tolerance:number) {
   return price>=z.low-tolerance && price<=z.high+tolerance;
 }
 function findSetup(h4:Candle[],h1:Candle[],m15:Candle[],m5:Candle[],symbol:string,now:number) {
-  const s4=structure(h4),s1=structure(h1),s5=structure(m5);\n  const vp=volumeProfile(h1);
+  const s4=structure(h4),s1=structure(h1),s5=structure(m5);
+  const vp=volumeProfile(h1);
   if(!s4||!s1||!s5||s4.trend==="RANGING") return null;
   const direction=s4.trend==="BULLISH"?"BUY":"SELL";
   const opposite=direction==="BUY"?"SELL":"BUY";
