@@ -59,7 +59,7 @@ function findSetup(m5:Candle[],h4:Candle[],symbol:string,now:number) {
       const targets=buy?swings(h4,"high").map(k=>h4[k].high).filter(x=>x>entry):swings(h4,"low").map(k=>h4[k].low).filter(x=>x<entry);
       if(!targets.length) continue;
       const tp=buy?Math.min(...targets):Math.max(...targets), risk=Math.abs(entry-stop), rr=risk?Math.abs(tp-entry)/risk:0;
-      if(!risk||rr<1.5) continue;
+      if(!risk||rr<1.3) continue;
       const range=h4.slice(-20), eq=(Math.max(...range.map(x=>x.high))+Math.min(...range.map(x=>x.low)))/2;
       if(buy?entry>=eq:entry<=eq) continue;
       const round=(n:number)=>Number(n.toFixed(6));
