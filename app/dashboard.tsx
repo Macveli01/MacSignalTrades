@@ -9,7 +9,7 @@ const assets = [
   ["ETHUSD","Ethereum / US Dollar","CRYPTO","COINBASE:ETHUSD"]
 ] as const;
 type Draft={id:number;symbol:string;side:string;entry:string;sl:string;tp:string;summary:string;details:string};
-type StoredSignal={id:number;symbol:string;direction:string;entry:number;stop_loss:number;take_profit:number;risk_reward:number;status:string;candle_time:string;market:string;timeframe:string;payload?:{setup?:{zoneType?:string}}};
+type StoredSignal={id:number;symbol:string;direction:string;entry:number;stop_loss:number;take_profit:number;risk_reward:number;status:string;candle_time:string;market:string;timeframe:string;payload?:{setup?:any}};
 
 function SignalChart({symbol,signal}:{symbol:string;signal?:StoredSignal}){
  const [interval,setInterval]=useState("15m"),[mode,setMode]=useState("canvas");
