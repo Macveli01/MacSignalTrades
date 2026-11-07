@@ -19,7 +19,7 @@ select vault.create_secret(
 
 select cron.schedule(
   'macsignaltrades-every-2-minutes',
-  '*/2 6-17 * * *',
+  '*/2 * * * *',
   $$
     select net.http_post(
       url := (
@@ -38,6 +38,6 @@ select cron.schedule(
   $$
 );
 
--- UTC 06:00-17:58 = Lagos 07:00-18:58.
--- Keep SCANNER_ENABLED=false until the manual POST succeeds and writes are verified.
+-- Runs every two minutes, 24 hours a day, 7 days a week (UTC).
+-- Scanner runs continuously when SCANNER_ENABLED=true.
 -- Pause: select cron.unschedule('macsignaltrades-every-2-minutes');
