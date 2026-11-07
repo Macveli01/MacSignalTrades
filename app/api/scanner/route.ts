@@ -112,9 +112,9 @@ export async function POST(request:Request) {
   try {
     const symbols=(process.env.WATCHLIST||DEFAULT_WATCHLIST.join(",")).split(",").map(x=>x.trim()).filter(Boolean);
     if(!symbols.length) throw new Error("Watchlist is empty");
-    const now=new Date(), minute=now.getUTCHours()*60+now.getUTCMinutes();
-    const slot=Math.floor((minute-360)/2);
-    if(slot<0||now.getUTCHours()>17) return Response.json({ok:true,status:"OUTSIDE_SCAN_WINDOW"});
+    const now=new Date();
+    // Continuous 24/7 rotation: advance one watchlist symbol every two minutes.
+    const slot=Math.floor(now.getTime()/120000);
     const symbol=symbols[((slot%symbols.length)+symbols.length)%symbols.length];
     const [m5raw,h4raw]=await Promise.all([candles(symbol,"5m"),candles(symbol,"4h")]);
     const m5=m5raw.filter(x=>Date.parse(x.datetime)+300000<=now.getTime()),h4=h4raw.filter(x=>Date.parse(x.datetime)+14400000<=now.getTime());
