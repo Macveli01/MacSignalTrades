@@ -3,14 +3,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 type TF = "5m" | "15m" | "1h" | "4h";
-type Candle = { datetime: string; open: number; high: number; low: number; close: number };
+type Candle = { datetime: string; open: number; high: number; low: number; close: number; volume?: number };
 const DEFAULT_WATCHLIST = ["EUR/USD","GBP/USD","USD/JPY","XAU/USD","BTC/USD","ETH/USD"];
 const SUPABASE_URL = "https://reoyfmavtaldilcawwzp.supabase.co";
 
 function parseBars(data: any): Candle[] {
   if (!Array.isArray(data?.bars)) throw new Error("OHLC response has no bars array");
   const bars = data.bars.filter((x:any)=>x && x.isOpen!==true).map((x:any)=>({
-    datetime:String(x.openTime), open:Number(x.open), high:Number(x.high), low:Number(x.low), close:Number(x.close)
+    datetime:String(x.openTime), open:Number(x.open), high:Number(x.high), low:Number(x.low), close:Number(x.close), volume:Number(x.volume ?? x.tickVolume ?? x.vol ?? x.tick_volume)
   })).filter((x:Candle)=>Number.isFinite(Date.parse(x.datetime)) && [x.open,x.high,x.low,x.close].every(Number.isFinite));
   bars.sort((a:Candle,b:Candle)=>Date.parse(a.datetime)-Date.parse(b.datetime));
   if (bars.length < 40) throw new Error("Fewer than 40 completed candles");
@@ -37,6 +37,39 @@ function pivots(c:Candle[], side:"high"|"low") {
 function median(values:number[]) {
   const a=[...values].sort((x,y)=>x-y);
   return a.length?a[Math.floor(a.length/2)]:0;
+}
+function volumeProfile(c:Candle[], bins=32) {
+  const sample=c.slice(-120).filter(x=>Number.isFinite(x.volume)&&Number(x.volume)>0);
+  if(sample.length<20) return null;
+  const low=Math.min(...sample.map(x=>x.low)), high=Math.max(...sample.map(x=>x.high));
+  if(!(high>low)) return null;
+  const step=(high-low)/bins, levels=Array.from({length:bins},(_,i)=>({low:low+i*step,high:low+(i+1)*step,volume:0}));
+  for(const candle of sample){
+    const typical=(candle.high+candle.low+candle.close)/3;
+    const index=Math.max(0,Math.min(bins-1,Math.floor((typical-low)/step)));
+    levels[index].volume+=Number(candle.volume);
+  }
+  const total=levels.reduce((sum,x)=>sum+x.volume,0);
+  if(!total) return null;
+  const pocIndex=levels.reduce((best,x,i)=>x.volume>levels[best].volume?i:best,0);
+  let left=pocIndex,right=pocIndex,covered=levels[pocIndex].volume;
+  while(covered<total*0.70&&(left>0||right<bins-1)){
+    const below=left>0?levels[left-1].volume:-1,above=right<bins-1?levels[right+1].volume:-1;
+    if(above>below){right++;covered+=levels[right].volume;}
+    else if(left>0){left--;covered+=levels[left].volume;}
+    else {right++;covered+=levels[right].volume;}
+  }
+  const round=(n:number)=>Number(n.toFixed(6));
+  const poc=levels[pocIndex],vah=levels[right],val=levels[left];
+  const current=c[c.length-1].close;
+  return {
+    method:"OHLCV typical-price volume histogram; approximate profile",
+    sourceVolumeType:"provider volume (may be tick volume for FX)",
+    sampleCandles:sample.length,bins,totalVolume:round(total),
+    poc:round((poc.low+poc.high)/2),vah:round(vah.high),val:round(val.low),
+    currentPriceLocation:current>vah.high?"ABOVE_VALUE_AREA":current<val.low?"BELOW_VALUE_AREA":current>=val.low&&current<=vah.high?"INSIDE_VALUE_AREA":"NEAR_VALUE_AREA",
+    pocDistance:round(current-(poc.low+poc.high)/2)
+  };
 }
 function structure(c:Candle[]) {
   const hi=pivots(c,"high"), lo=pivots(c,"low");
@@ -73,7 +106,7 @@ function inZone(price:number,z:{low:number;high:number}, tolerance:number) {
   return price>=z.low-tolerance && price<=z.high+tolerance;
 }
 function findSetup(h4:Candle[],h1:Candle[],m15:Candle[],m5:Candle[],symbol:string,now:number) {
-  const s4=structure(h4),s1=structure(h1),s5=structure(m5);
+  const s4=structure(h4),s1=structure(h1),s5=structure(m5);\n  const vp=volumeProfile(h1);
   if(!s4||!s1||!s5||s4.trend==="RANGING") return null;
   const direction=s4.trend==="BULLISH"?"BUY":"SELL";
   const opposite=direction==="BUY"?"SELL":"BUY";
@@ -140,8 +173,8 @@ function findSetup(h4:Candle[],h1:Candle[],m15:Candle[],m5:Candle[],symbol:strin
     source:"biquote_public_feed",symbol,market:symbol.startsWith("XAU/")?"gold":/(BTC|ETH)/.test(symbol)?"crypto":"forex",
     direction,timeframe:"5m",candleClosed:true,candleTime:new Date(lastMs).toISOString(),
     entry:round(entry),stopLoss:round(stop),takeProfit:round(tp),riskReward:round(rr),
-    checks:{h4BiasAligned:true,h4KeyLevelsIdentified:true,h1TrendAligned:true,h1BosConfirmed:true,h1ChochChecked:true,h1OrderBlockFound:Boolean(ob),h1FvgFound:Boolean(fvg),m15RetestConfirmed:true,m15CandlestickConfirmation:true,m5LiquiditySweep:true,m5Displacement:true,m5MssConfirmedByClose:true,m5FvgConfirmed:true,structuralStop:true,externalLiquidityTarget:true},
-    setup:{h4Bias:direction,h4KeyLevels:{swingHigh:round(h4KeyLevels.swingHigh),swingLow:round(h4KeyLevels.swingLow),equilibrium:round(equilibrium)},h1Structure:s1.trend,h1Bos:true,h1Choch:false,orderBlock:ob?{low:round(ob.low),high:round(ob.high)}:null,h1Fvg:fvg?{low:round(fvg.low),high:round(fvg.high)}:null,m15Retest:true,m15CandlePattern:"directional_body_close_through_previous_candle",m5SweepCandleTime:sweep.datetime,m5DisplacementCandleTime:m5[impulseIndex].datetime,zoneType:"M5_FVG",zoneLow:round(microFvg.low),zoneHigh:round(microFvg.high),equilibrium:round(equilibrium)}
+    checks:{volumeProfileAvailable:Boolean(vp),volumeProfileIncludedAsContext:true,h4BiasAligned:true,h4KeyLevelsIdentified:true,h1TrendAligned:true,h1BosConfirmed:true,h1ChochChecked:true,h1OrderBlockFound:Boolean(ob),h1FvgFound:Boolean(fvg),m15RetestConfirmed:true,m15CandlestickConfirmation:true,m5LiquiditySweep:true,m5Displacement:true,m5MssConfirmedByClose:true,m5FvgConfirmed:true,structuralStop:true,externalLiquidityTarget:true},
+    setup:{volumeProfile:vp,h4Bias:direction,h4KeyLevels:{swingHigh:round(h4KeyLevels.swingHigh),swingLow:round(h4KeyLevels.swingLow),equilibrium:round(equilibrium)},h1Structure:s1.trend,h1Bos:true,h1Choch:false,orderBlock:ob?{low:round(ob.low),high:round(ob.high)}:null,h1Fvg:fvg?{low:round(fvg.low),high:round(fvg.high)}:null,m15Retest:true,m15CandlePattern:"directional_body_close_through_previous_candle",m5SweepCandleTime:sweep.datetime,m5DisplacementCandleTime:m5[impulseIndex].datetime,zoneType:"M5_FVG",zoneLow:round(microFvg.low),zoneHigh:round(microFvg.high),equilibrium:round(equilibrium)}
   };
 }
 
@@ -177,7 +210,7 @@ async function interpretChart(signal:any,h4:Candle[],h1:Candle[],m15:Candle[],m5
     "Check directional H4 context, H1 structure/BOS and nearby supply/demand or OB/FVG context, M15 pullback/retest and candle confirmation, and M5 sweep/displacement/market-structure shift.",
     "This is only an advisory cross-check. Never suggest executing a trade. Return ONLY one JSON object with keys verdict (CONFIRMED, REJECTED, UNCERTAIN), direction (BUY, SELL, NONE), confidence (integer 0-100), reason (short string), and observations (short string).",
     "Candidate: "+JSON.stringify({symbol:signal.symbol,direction:signal.direction,entry:signal.entry,stopLoss:signal.stopLoss,takeProfit:signal.takeProfit,riskReward:signal.riskReward,setup:signal.setup}),
-    "Recent completed OHLC context (chronological): "+JSON.stringify({H4:compact(h4),H1:compact(h1),M15:compact(m15),M5:compact(m5)})
+    "Approximate H1 volume profile (POC/value area; FX volume may be tick volume): "+JSON.stringify(signal.setup?.volumeProfile||null),\n    "Recent completed OHLC context (chronological): "+JSON.stringify({H4:compact(h4),H1:compact(h1),M15:compact(m15),M5:compact(m5)})
   ].join("\n\n");
   const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+apiKey,"Content-Type":"application/json","HTTP-Referer":"https://macsignaltrades.vercel.app","X-Title":"MacSignalTrades"},body:JSON.stringify({model:"openrouter/free",messages:[{role:"user",content:[{type:"text",text:prompt},{type:"image_url",image_url:{url:i4}},{type:"image_url",image_url:{url:i1}},{type:"image_url",image_url:{url:i15}},{type:"image_url",image_url:{url:i5}}]}],temperature:0.1,max_tokens:500}),cache:"no-store",signal:AbortSignal.timeout(30000)});
   const body=await r.json();
